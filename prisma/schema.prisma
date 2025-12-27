@@ -1,0 +1,481 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                     Int                      @id @default(autoincrement())
+  email                  String                   @unique
+  username               String                   @unique
+  password               String
+  firstName              String
+  lastName               String
+  gender                 Gender?
+  phone                  String?
+  role                   Role                     @default(USER)
+  isEmailVerified        Boolean                  @default(false)
+  lastLoginAt            DateTime?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  accounts               Account[]
+  applications           Application[]
+  employerContracts      Contract[]               @relation("EmployerContracts")
+  seekerContracts        Contract[]               @relation("SeekerContracts")
+  emailVerificationToken EmailVerificationToken[]
+  employerProfile        EmployerProfile?
+  filesCreated           FileObject[]             @relation("UserCreatedFiles")
+  messages               Message[]                @relation("UserMessages")
+  reviewsReceived        Review[]                 @relation("ReviewsReceived")
+  reviewsGiven           Review[]                 @relation("ReviewsGiven")
+  roleChanges            RoleChangeLog[]
+  seekerProfile          SeekerProfile?
+  sessions               Session[]
+  addresses              Address[]
+  passwordResetToken     PasswordResetToken[]
+  notifications          Notification[]
+  directMessageThreads1  DirectMessageThread[]    @relation("ThreadParticipant1")
+  directMessageThreads2  DirectMessageThread[]    @relation("ThreadParticipant2")
+  directMessages         DirectMessage[]          @relation("DirectMessageSender")
+
+  @@index([role])
+}
+
+model RoleChangeLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  fromRole  Role
+  toRole    Role
+  reason    String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model SeekerProfile {
+  id              Int                  @id @default(autoincrement())
+  userId          Int                  @unique
+  pathway         Pathway
+  profession      String?
+  headline        String?
+  bio             String?
+  resumeFileId    String?
+  dateOfBirth     DateTime?
+  yearsExperience Int?
+  availability    String?
+  education       Education[]
+  portfolio       PortfolioItem[]
+  resumeFile      FileObject?          @relation("ProfileResumeFile", fields: [resumeFileId], references: [id])
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skills          SkillOnProfile[]
+  trainings       VocationalTraining[]
+  experiences     WorkExperience[]
+}
+
+model EmployerProfile {
+  id              Int         @id @default(autoincrement())
+  userId          Int         @unique
+  orgName         String
+  orgType         String?
+  website         String?
+  verified        Boolean     @default(false)
+  companyLogo     String?
+  companyLogoFile FileObject? @relation("CompanyLogoFile", fields: [companyLogo], references: [id], onDelete: SetNull)
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs            Job[]
+}
+
+model Job {
+  id           Int             @id @default(autoincrement())
+  employerId   Int
+  title        String
+  description  String
+  type         JobType         @default(GIG)
+  location     String?
+  salaryRange  String?
+  status       JobStatus       @default(OPEN)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  // GIG/Freelance specific fields
+  projectDuration String?
+  budget         String?
+  deadline        DateTime?
+  deliverables   String?
+  // INTERNSHIP specific fields
+  internshipDuration String?
+  stipend          String?
+  startDate        DateTime?
+  learningObjectives String?
+  // PART_TIME specific fields
+  hoursPerWeek  String?
+  schedule      String?
+  hourlyRate    String?
+  // FULL_TIME specific fields
+  workArrangement String?
+  startDateFullTime DateTime?
+  probationPeriod  String?
+  benefits         String?
+  applications Application[]
+  contract     Contract?
+  employer     EmployerProfile @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  skills       SkillOnJob[]
+
+  @@index([status, type])
+}
+
+model Application {
+  id                Int               @id @default(autoincrement())
+  jobId             Int
+  userId            Int
+  status            ApplicationStatus @default(APPLIED)
+  coverLetterText   String?
+  coverLetterFileId String
+  cvFileId          String
+  expectedPay       Int?
+  createdAt         DateTime          @default(now())
+  coverLetterFile   FileObject        @relation("CoverLetterFile", fields: [coverLetterFileId], references: [id])
+  cvFile            FileObject        @relation("CvFile", fields: [cvFileId], references: [id])
+  job               Job               @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([userId, createdAt])
+}
+
+model Contract {
+  id         Int            @id @default(autoincrement())
+  jobId      Int            @unique
+  seekerId   Int
+  employerId Int
+  status     ContractStatus @default(DRAFT)
+  createdAt  DateTime       @default(now())
+  employer   User           @relation("EmployerContracts", fields: [employerId], references: [id], onDelete: Cascade)
+  job        Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  seeker     User           @relation("SeekerContracts", fields: [seekerId], references: [id], onDelete: Cascade)
+  thread     MessageThread?
+  milestones Milestone[]
+  reviews    Review[]
+}
+
+model Milestone {
+  id         Int             @id @default(autoincrement())
+  contractId Int
+  title      String
+  amount     Int?
+  status     MilestoneStatus @default(PROPOSED)
+  dueDate    DateTime?
+  contract   Contract        @relation(fields: [contractId], references: [id], onDelete: Cascade)
+}
+
+model MessageThread {
+  id         Int       @id @default(autoincrement())
+  contractId Int       @unique
+  messages   Message[]
+  contract   Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+}
+
+model Message {
+  id        Int           @id @default(autoincrement())
+  threadId  Int
+  senderId  Int
+  body      String
+  createdAt DateTime      @default(now())
+  sender    User          @relation("UserMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  thread    MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+}
+
+// Direct messaging between users (not tied to contracts)
+model DirectMessageThread {
+  id        Int              @id @default(autoincrement())
+  participant1Id Int
+  participant2Id Int
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  participant1 User           @relation("ThreadParticipant1", fields: [participant1Id], references: [id], onDelete: Cascade)
+  participant2 User           @relation("ThreadParticipant2", fields: [participant2Id], references: [id], onDelete: Cascade)
+  messages   DirectMessage[]
+
+  @@unique([participant1Id, participant2Id])
+  @@index([participant1Id])
+  @@index([participant2Id])
+}
+
+model DirectMessage {
+  id        Int                @id @default(autoincrement())
+  threadId  Int
+  senderId  Int
+  body      String
+  read      Boolean            @default(false)
+  createdAt DateTime            @default(now())
+  sender    User                @relation("DirectMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  thread    DirectMessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@index([senderId])
+}
+
+// Notifications for users
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String   // RECRUITMENT, APPLICATION, MESSAGE, etc.
+  title     String
+  message   String
+  link      String?  // Optional link to related page
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read, createdAt])
+}
+
+model Review {
+  id         Int      @id @default(autoincrement())
+  contractId Int
+  reviewerId Int
+  revieweeId Int
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  reviewee   User     @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
+  reviewer   User     @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+}
+
+model Skill {
+  id       Int              @id @default(autoincrement())
+  name     String           @unique
+  slug     String           @unique
+  jobs     SkillOnJob[]
+  profiles SkillOnProfile[]
+}
+
+model SkillOnProfile {
+  profileId Int
+  skillId   Int
+  level     Int?
+  profile   SeekerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  skill     Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([profileId, skillId])
+}
+
+model SkillOnJob {
+  jobId    Int
+  skillId  Int
+  required Boolean @default(true)
+  job      Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  skill    Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([jobId, skillId])
+}
+
+model Education {
+  id         Int           @id @default(autoincrement())
+  profileId  Int
+  school     String
+  credential String?
+  field      String?
+  startYear  Int?
+  endYear    Int?
+  profile    SeekerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model VocationalTraining {
+  id           Int           @id @default(autoincrement())
+  profileId    Int
+  trainingName String
+  institute    String?
+  certificate  String?
+  startDate    DateTime?
+  endDate      DateTime?
+  profile      SeekerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model WorkExperience {
+  id          Int           @id @default(autoincrement())
+  profileId   Int
+  companyName String
+  roleTitle   String?
+  startDate   DateTime?
+  endDate     DateTime?
+  description String?
+  profile     SeekerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model PortfolioItem {
+  id          Int           @id @default(autoincrement())
+  profileId   Int
+  title       String
+  description String?
+  linkUrl     String?
+  fileId      String?
+  file        FileObject?   @relation("PortfolioFiles", fields: [fileId], references: [id])
+  profile     SeekerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model RegionSL {
+  id        Int          @id @default(autoincrement())
+  name      String       @unique
+  districts DistrictSL[]
+  Address   Address[]
+}
+
+model DistrictSL {
+  id        Int       @id @default(autoincrement())
+  name      String
+  regionId  Int
+  region    RegionSL  @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  addresses Address[]
+
+  @@unique([name, regionId])
+  @@index([regionId])
+}
+
+model Address {
+  id           Int         @id @default(autoincrement())
+  userId       Int
+  addressLine1 String
+  addressLine2 String?
+  city         String?
+  regionId     Int?
+  districtId   Int?
+  postalCode   String?     @db.VarChar(24)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  district     DistrictSL? @relation(fields: [districtId], references: [id])
+  region       RegionSL?   @relation(fields: [regionId], references: [id])
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([regionId])
+  @@index([districtId])
+  @@map("addresses")
+}
+
+model FileObject {
+  id                       String            @id @default(cuid())
+  bucketKey                String
+  contentType              String?
+  sizeBytes                Int?
+  etag                     String?
+  createdAt                DateTime          @default(now())
+  createdById              Int?
+  applicationsCoverLetters Application[]     @relation("CoverLetterFile")
+  applicationsCvs          Application[]     @relation("CvFile")
+  companyLogos             EmployerProfile[] @relation("CompanyLogoFile")
+  createdBy                User?             @relation("UserCreatedFiles", fields: [createdById], references: [id])
+  portfolioFiles           PortfolioItem[]   @relation("PortfolioFiles")
+  profileResumes           SeekerProfile[]   @relation("ProfileResumeFile")
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    Int
+  codeHash  String?
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  expiresAt DateTime
+  userId    Int
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("password_reset_tokens")
+}
+
+model Account {
+  id                Int     @id @default(autoincrement())
+  userId            Int
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       Int
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum Role {
+  USER
+  JOB_SEEKER
+  EMPLOYER
+  ADMIN
+}
+
+enum JobType {
+  GIG
+  INTERNSHIP
+  PART_TIME
+  FULL_TIME
+}
+
+enum JobStatus {
+  OPEN
+  CLOSED
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SHORTLISTED
+  HIRED
+  REJECTED
+}
+
+enum Pathway {
+  STUDENT
+  GRADUATE
+  ARTISAN
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  SUBMITTED
+  APPROVED
+  CANCELLED
+}
+
+enum MilestoneStatus {
+  PROPOSED
+  IN_PROGRESS
+  SUBMITTED
+  APPROVED
+  REVISED
+}
